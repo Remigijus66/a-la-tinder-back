@@ -1,58 +1,94 @@
-const userSchema = require("../schemas/userSchema")
-const sendRes = require("../modules/sendRes")
-const productSchema = require("../schemas/itemSchema")
-const boughtSchema = require("../schemas/boughtProducts")
-const bcrypt = require("bcrypt")
-const {wordToGuess, makeGuess} = require("../modules/gameLogic")
-const e = require("express");
+const {uid} = require("uid")
 
+const users = []
+const posts = []
+const comments = []
 
 module.exports = {
-    register: async (req, res) => {
+
+    register: (req, res) => {
         const {email, passOne} = req.body
 
-        const password = await bcrypt.hash(passOne, 10)
+        const sameUser = users.find(x => x.email === email)
+        if(sameUser) return res.send({error: true})
 
-        const user = new userSchema({
-            email,
-            password
+        users.push({
+            email: email,
+            password: passOne
         })
 
-        await user.save()
+        console.log(req.body)
 
-        sendRes(res, "registration ok", false)
+        res.send({error: false})
     },
-    login: async (req, res) => {
+    login: (req, res) => {
         const {email, password} = req.body
 
-        const user = await userSchema.findOne({email})
+        const user = users.find(x => x.email === email && x.password === password)
 
-        if(!user) return sendRes(res, "user not found by email", true)
-
-        const compare = await bcrypt.compare(password, user.password)
-        console.log(compare)
-
-        if(!compare) return sendRes(res, "bad password", true)
-
-        req.session.user = user
-
-        return sendRes(res, "login is ok", false, {user})
-    },
-    autoLogin: async (req, res) => {
-
-        if(req.session.user) {
-            const {email} = req.session.user
-            const user = await userSchema.findOne({email})
-
-            return sendRes(res, "login is ok", false, {user})
+        if(user) {
+            req.session.user = user.email
+            return res.send({error: false})
         }
 
-
-        sendRes(res, "no user session", true, null)
+        res.send({error: true})
     },
-    logout: async (req, res) => {
-        delete req.session.user
-        sendRes(res, "session removed", false, null)
+    authSession: (req, res) => {
+        const {user} = req.session
+        console.log(user)
+        res.send({error: !(!!user) })
+    },
+
+    createPost: (req, res) => {
+        const {url} = req.body
+        const {user} = req.session
+
+        if(user) {
+            posts.push({
+                image: url,
+                id: uid(),
+                user
+            })
+
+            return res.send({error: false})
+        }
+
+        res.send({error: true})
+    },
+    getPosts: (req, res) => {
+        res.send({error: false, posts})
+    },
+    getPost: (req, res) => {
+        const {id} = req.params
+
+        const {user} = req.session
+
+        const post = posts.find(x => x.id === id)
+
+        const myComments = comments.filter(x => x.id === id)
+
+        res.send({error: false, post, loggedIn: !!user, comments: myComments})
+    },
+    comment: (req, res) => {
+        const {comment, postId} = req.body
+
+        const {user} = req.session
+
+        if(user) {
+            const com = {
+                comment,
+                user,
+                id: postId,
+                time: Date.now()
+            }
+
+            comments.push(com)
+
+            const allPostComments = comments.filter(x => x.id === postId)
+            return res.send({error: false, comments: allPostComments})
+        }
+
+        res.send({error: true})
     }
 
 }

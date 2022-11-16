@@ -1,99 +1,137 @@
-const mongoose = require("mongoose")
 const express = require("express")
 const cors = require("cors")
 const app = express()
-const mainRouter = require("./router/mainRouter")
-const session = require("express-session")
 const http = require("http").createServer(app)
-const socket = require("socket.io")
+const socketIo = require("socket.io")
+
+const io = socketIo(http, {
+    cors: {
+        origin: "http://localhost:3000"
+    }
+})
+
 require("dotenv").config()
 
-const io = socket(http, {cors: {origin: "http://localhost:3000"}})
+http.listen(4001)
 
-mongoose.connect(process.env.MONGO_KEY).then(res => {
-    console.log("CONNECTED")
-}).catch(e => {
-    console.log('ERROR')
-})
-
-
-http.listen(4000)
-app.use(express.json())
-
-
-app.use(cors({
-    origin: true, credentials: true, methods: "GET, POST"
-}))
-
-app.use(session({
-    secret: "6s5d4fs89d4f65", resave: false, saveUninitialized: true
-}))
-
-app.use('/', mainRouter)
-
+app.set('socketio', io);
 
 const users = []
-let products = []
-const bought = []
-
-io.on("connect", (socket) => {
+const fans = []
+const messages = []
 
 
-    socket.emit("products_update", products)
+io.on("connection", socket => {
+    socket.on('register', (data) => {
+        users.push({
+            name: data.name,
+            photo: data.photo,
+            id: socket.id
+        })
+        socket.broadcast.emit('newUser', users);
+        // socket.join(data.name)
+        // console.log(users)
+    })
+    socket.on('usersAvailable', () => {
+        socket.emit('newUser', users);
+        // console.log(users)
+    })
+    socket.on('like', (data) => {
+        console.log(fans)
+        console.log(data)
+        if (fans.filter((e) => e.liked === data.liked && e.fanName === data.fanName && e.fanPhoto === data.fanPhoto).length === 0)
+            fans.push(data)
+        // console.log(fans)
+        socket.broadcast.emit('newFan', fans);
 
-
-    socket.on("register", username => {
-        const user = {
-            name: username, id: socket.id, money: 1000
-        }
-
-        users.push(user)
-
-        socket.emit("user_update", user)
+    })
+    socket.on('message', (data) => {
+        console.log(data)
+        messages.push(data)
+        socket.broadcast.emit('newMessage', messages)
     })
 
 
-    socket.on("add_product", prod => {
-        const myUser = users.find(x => x.id === socket.id)
-        const myProd = {
-            ...prod, socket_id: socket.id, id: Date.now(), username: myUser.name
-        }
 
-        products.push(myProd)
-
-        io.emit("products_update", products)
-    })
-
-    socket.on("buy", id => {
-        const boughtItem = products.find(x => x.id === id)
-        const me = users.find(x => x.id === socket.id)
-
-        const myIndex = users.findIndex(x => x.id === socket.id)
-
-        const sellerIndex = users.findIndex(x => x.id === boughtItem.socket_id)
-
-        if (boughtItem.price <= me.money) {
-            users[myIndex].money -= boughtItem.price
-            users[sellerIndex].money += Number(boughtItem.price)
-
-            socket.emit("user_update", users[myIndex])
-
-            io.to(users[sellerIndex].id).emit("user_update", users[sellerIndex])
-
-            boughtItem.owner_id = socket.id
-            bought.push(boughtItem)
-
-            products = products.filter(x => x.id !== id)
-
-            const myBoughtItems = bought.filter(x => x.owner_id === socket.id)
-            console.log(myBoughtItems)
-            socket.emit("bought", myBoughtItems)
-
-
-            io.emit("products_update", products)
-        }
-
-
-
-    })
 })
+    // socket.on('joinRoom', (data) => {
+    //     console.log(data)
+    //     socket.join(data.roomName)
+    //     const msg = `${data.user} has joined the room ${new Date}`
+    //     socket.to(data.roomName).emit("newUser", msg);
+    // })
+
+    // socket.on('leaveTheRoom', (data) => {
+    //     console.log(data)
+    //     socket.leave(data.roomName)
+    //     const msg = `${data.user} has farted and left the room. Bastard`
+    //     socket.to(data.roomName).emit("newUser", msg);
+    // })
+
+
+
+    // socket.on('chatMessage', data => {
+    //     // console.log(data)
+    //     const messageData = {
+    //         name: data.name, message: data.message, time: data.time
+    //     }
+    //     // console.log(messageData)
+    //     if (data.roomName === "pirmas") {
+    //         chatLogPirmas.push(messageData)
+    //         // console.log(chatLog)
+    //         io.in(data.roomName).emit("newchatmsg", chatLogPirmas)
+    //     }
+    //     if (data.roomName === "antras") {
+    //         chatLogAntras.push(messageData)
+    //         // console.log(chatLog)
+    //         io.in(data.roomName).emit("newchatmsg", chatLogAntras)
+    //     }
+    //     if (data.roomName === "trecias") {
+    //         chatLogTrecias.push(messageData)
+    //         // console.log(chatLog)
+    //         io.in(data.roomName).emit("newchatmsg", chatLogTrecias)
+    //     }
+    // })
+
+
+
+    // // SEND MESSAGE TO OWN SOCKET
+    // // socket.emit("message", "hello, how are you ")
+
+    // // RECEIVE EVENT FROM FRONT END
+    // // socket.on("something", data => {
+    // //     console.log(data)
+
+    //     // SEND MESSAGE TO ALL SOCKETS IN APP
+    //     // io.emit("message", data)
+
+    //     // SEND MESSAGE TO ALL SOCKETS EXCEPT ME (SENDER)
+    //     socket.broadcast.emit("message", data)
+    // })
+
+
+    // socket.on('color', data => {
+    //     // console.log(data)
+    //     socket.broadcast.emit("color", data)
+    // })
+
+    // socket.on('countOthers', data => {
+    //     // console.log(data)
+    //     socket.broadcast.emit("countOthers", data)
+    // })
+    // socket.on('countMe', data => {
+    //     // console.log(data)
+    //     socket.emit("countMe", data)
+    // })
+    // socket.on('countAll', data => {
+    //     // console.log(data)
+    //     io.emit("countAll", data)
+    // })
+
+
+
+
+
+
+
+
